@@ -24,9 +24,7 @@ async def main():
     args = parser.parse_args()
     host, port, history = args.host, int(args.port), args.history
     await asyncio.gather(
-        read_chat(host, port, history),
-        send_message("Привет")
-    )
+        read_chat(host, port, history))
     # asyncio.run(read_chat(host, port, history))
 
 

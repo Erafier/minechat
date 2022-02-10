@@ -2,13 +2,27 @@ import asyncio
 import logging
 import json
 
+import aiofiles
+
 logging.getLogger("asyncio").setLevel(logging.WARNING)
 logging.basicConfig(
     format="%(levelname)s:%(filename)s:%(message)s",
     level=logging.DEBUG
 )
 
-ACCOUNT_HASH = "70dda132-81b9-11ec-8c47-0242ac110002ssss"
+ACCOUNT_HASH = "70dda132-81b9-11ec-8c47-0242ac110002ююююю"
+
+
+async def register(reader, writer):
+    print("Введите имя нового пользователя")
+    name = input() + "\n"
+    writer.write(name.encode())
+    await writer.drain()
+    answer = await reader.read(100)
+    logging.debug(answer.decode())
+    parsed_answer = json.loads(answer.decode().split("\n")[0])
+    with open("token.json", "w") as file:
+        json.dump(parsed_answer, file)
 
 
 async def authorize(token=ACCOUNT_HASH):
@@ -19,13 +33,18 @@ async def authorize(token=ACCOUNT_HASH):
     await writer.drain()
     answer = await reader.read(100)
     logging.debug(answer.decode())
-    writer.write(ACCOUNT_HASH.encode() + "\n".encode())
+    writer.write(token.encode() + "\n".encode())
     await writer.drain()
     answer = await reader.read(100)
     logging.debug(answer.decode())
     parsed_answer = json.loads(answer.decode().split("\n")[0])
     if not parsed_answer:
-        logging.debug("Неизвестный токен. Проверьте его или зарегистрируйте заново.")
+        print("Неизвестный токен. Проверьте его или зарегистрируйте заново.")
+        await register(reader, writer)
+        with open("token.json", "r") as file:
+            token = json.load(file)
+
+        await authorize(token["account_hash"])
     return reader, writer
 
 
