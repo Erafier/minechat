@@ -1,8 +1,7 @@
 import asyncio
 import logging
 import json
-
-import aiofiles
+from typing import Optional
 
 logging.getLogger("asyncio").setLevel(logging.WARNING)
 logging.basicConfig(
@@ -13,48 +12,66 @@ logging.basicConfig(
 ACCOUNT_HASH = "70dda132-81b9-11ec-8c47-0242ac110002ююююю"
 
 
-async def register(reader, writer):
-    print("Введите имя нового пользователя")
-    name = input() + "\n"
-    writer.write(name.encode())
-    await writer.drain()
-    answer = await reader.read(100)
-    logging.debug(answer.decode())
-    parsed_answer = json.loads(answer.decode().split("\n")[0])
-    with open("token.json", "w") as file:
-        json.dump(parsed_answer, file)
+class ChatHandler:
+    logger = logging.getLogger()
 
+    def __init__(self, host: str, port: int, token_file_name: str = "token.json"):
+        self.port = port
+        self.host = host
+        self.loop = asyncio.get_event_loop()
+        self.token_file_name = token_file_name
 
-async def authorize(token=ACCOUNT_HASH):
-    reader, writer = await asyncio.open_connection(
-        "minechat.dvmn.org", 5050
-    )
-    writer.write(b"")
-    await writer.drain()
-    answer = await reader.read(100)
-    logging.debug(answer.decode())
-    writer.write(token.encode() + "\n".encode())
-    await writer.drain()
-    answer = await reader.read(100)
-    logging.debug(answer.decode())
-    parsed_answer = json.loads(answer.decode().split("\n")[0])
-    if not parsed_answer:
-        print("Неизвестный токен. Проверьте его или зарегистрируйте заново.")
-        await register(reader, writer)
-        with open("token.json", "r") as file:
+    async def _init_connection(self):
+        self.reader, self.writer = await asyncio.open_connection(
+            self.host, self.port
+        )
+
+    async def _get_message_from_server(self) -> str:
+        answer = await self.reader.read(1000)
+        answer = answer.decode()
+        self.logger.debug(answer)
+        return answer
+
+    async def _send_message_to_server(self, message: str):
+        message += "\n"
+        self.writer.write(message.encode())
+        await self.writer.drain()
+
+    def _get_token_hash_from_file(self) -> str:
+        with open(self.token_file_name, "r") as file:
             token = json.load(file)
+        return token["account_hash"]
 
-        await authorize(token["account_hash"])
-    return reader, writer
+    @staticmethod
+    def _parse_token_from_server(answer: str) -> Optional[dict]:
+        return json.loads(answer.split("\n")[0])
 
+    async def register(self):
+        await self._init_connection()
+        print("Введите имя нового пользователя")
+        await self._send_message_to_server(input())
+        answer = await self._get_message_from_server()
+        token = self._parse_token_from_server(answer)
+        with open(self.token_file_name, "w") as file:
+            json.dump(token, file)
 
-async def send_message(reader, writer, message):
-    message += "\n\n"
-    writer.write(message.encode())
-    await writer.drain()
+    async def authorize(self):
+        await self._init_connection()
+        # await self._send_message_to_server("")
+        await self._get_message_from_server()
+        token_hash = self._get_token_hash_from_file()
+        await self._send_message_to_server(token_hash)
+        answer = await self._get_message_from_server()
+        is_user_exist = self._parse_token_from_server(answer)
+        if not is_user_exist:
+            print("Неизвестный токен. Проверьте его или зарегистрируйте заново.")
+
+    async def submit_message(self, message):
+        await self._send_message_to_server(message + "\n")
 
 
 if __name__ == '__main__':
-    reader, writer = asyncio.run(authorize())
+    chat_handler = ChatHandler("minechat.dvmn.org", 5050)
+    asyncio.run(chat_handler.authorize())
     while message := input():
-        asyncio.run(send_message(reader, writer, message))
+        asyncio.run(chat_handler.submit_message(message))
