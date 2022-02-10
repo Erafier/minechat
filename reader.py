@@ -3,7 +3,7 @@ import datetime
 
 import aiofiles
 
-from parser import parser
+from parser import parser_reader
 
 
 async def read_chat(host, port, history):
@@ -20,7 +20,7 @@ async def read_chat(host, port, history):
 
 
 async def main():
-    args = parser.parse_args()
+    args = parser_reader.parse_args()
     host, port, history = args.host, int(args.port), args.history
     await asyncio.gather(
         read_chat(host, port, history)

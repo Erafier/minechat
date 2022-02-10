@@ -3,13 +3,13 @@ import logging
 import json
 from typing import Optional
 
+from parser import parser_writer
+
 logging.getLogger("asyncio").setLevel(logging.WARNING)
 logging.basicConfig(
     format="%(levelname)s:%(filename)s:%(message)s",
     level=logging.DEBUG
 )
-
-ACCOUNT_HASH = "70dda132-81b9-11ec-8c47-0242ac110002ююююю"
 
 
 class ChatHandler:
@@ -18,7 +18,6 @@ class ChatHandler:
     def __init__(self, host: str, port: int, token_file_name: str = "token.json"):
         self.port = port
         self.host = host
-        self.loop = asyncio.get_event_loop()
         self.token_file_name = token_file_name
 
     async def _init_connection(self):
@@ -33,6 +32,7 @@ class ChatHandler:
         return answer
 
     async def _send_message_to_server(self, message: str):
+        message = rf"{message}"
         message += "\n"
         self.writer.write(message.encode())
         await self.writer.drain()
@@ -46,10 +46,10 @@ class ChatHandler:
     def _parse_token_from_server(answer: str) -> Optional[dict]:
         return json.loads(answer.split("\n")[0])
 
-    async def register(self):
+    async def register(self, username: str):
         await self._init_connection()
         print("Введите имя нового пользователя")
-        await self._send_message_to_server(input())
+        await self._send_message_to_server(username)
         answer = await self._get_message_from_server()
         token = self._parse_token_from_server(answer)
         with open(self.token_file_name, "w") as file:
@@ -57,21 +57,33 @@ class ChatHandler:
 
     async def authorize(self):
         await self._init_connection()
-        # await self._send_message_to_server("")
         await self._get_message_from_server()
-        token_hash = self._get_token_hash_from_file()
-        await self._send_message_to_server(token_hash)
-        answer = await self._get_message_from_server()
-        is_user_exist = self._parse_token_from_server(answer)
-        if not is_user_exist:
-            print("Неизвестный токен. Проверьте его или зарегистрируйте заново.")
+        try:
+            token_hash = self._get_token_hash_from_file()
+        except FileNotFoundError:
+            print("Токен не найден. Зарегистрируйте нового пользователя. \n"
+                  "Для этого запустите скрипт с параметром --username")
+        else:
+            await self._send_message_to_server(token_hash)
+            answer = await self._get_message_from_server()
+            is_user_exist = self._parse_token_from_server(answer)
+            if not is_user_exist:
+                print("Неизвестный токен. Проверьте его или зарегистрируйте заново. \n"
+                      "Для этого запустите скрипт с параметром --username")
 
     async def submit_message(self, message):
         await self._send_message_to_server(message + "\n")
 
 
+async def main():
+    args = parser_writer.parse_args()
+    message, host, port, username = args.message, args.host, int(args.port), args.username
+    chat_handler = ChatHandler(host, port)
+    if username:
+        await chat_handler.register(username)
+    await chat_handler.authorize()
+    await chat_handler.submit_message(message)
+
+
 if __name__ == '__main__':
-    chat_handler = ChatHandler("minechat.dvmn.org", 5050)
-    asyncio.run(chat_handler.authorize())
-    while message := input():
-        asyncio.run(chat_handler.submit_message(message))
+    asyncio.run(main())
