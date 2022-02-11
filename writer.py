@@ -77,8 +77,8 @@ class ChatHandler:
 
 async def main():
     args = parser_writer.parse_args()
-    message, host, port, username = args.message, args.host, int(args.port), args.username
-    chat_handler = ChatHandler(host, port)
+    message, host, port, username, token = args.message, args.host, int(args.port), args.username, args.token
+    chat_handler = ChatHandler(host, port, token)
     if username:
         await chat_handler.register(username)
     await chat_handler.authorize()
