@@ -43,7 +43,6 @@ class ChatHandler:
         self.status_updates_queue = Queue()
         self.saved_messages_queue = Queue()
         self.watchdog_queue = Queue()
-        self._load_messages_from_history()
 
     async def _init_connection(self):
         self.watchdog_queue.put_nowait("Establishing connection")
@@ -64,17 +63,15 @@ class ChatHandler:
     async def _get_message_from_server(self) -> str:
         answer = await self.reader_w.read(1000)
         answer = answer.decode()
-        print(answer)
         return answer
 
-    def _get_token_hash_from_file(self) -> str:
-        with open(self.token_file_name, "r") as file:
-            token = json.load(file)
+    async def _get_token_hash_from_file(self) -> str:
+        async with aiofiles.open(self.token_file_name, "r") as file:
+            token = json.loads(await file.read())
         return token["account_hash"]
 
     @staticmethod
     def _parse_token_from_server(answer: str) -> Optional[dict]:
-        print(answer)
         return json.loads(answer.split("\n")[0])
 
     async def _send_message_to_server(self, message: str):
@@ -83,9 +80,9 @@ class ChatHandler:
         self.writer_w.write(message.encode())
         await self.writer_w.drain()
 
-    def _load_messages_from_history(self):
-        with open(self.history_file, mode="r") as file:
-            while message := file.readline():
+    async def _load_messages_from_history(self):
+        async with aiofiles.open(self.history_file, mode="r") as file:
+            while message := await file.readline():
                 self.messages_queue.put_nowait(message.strip())
 
     async def register(self, username: str):
@@ -96,13 +93,13 @@ class ChatHandler:
         await self._send_message_to_server(username)
         answer = await self._get_message_from_server()
         token = self._parse_token_from_server(answer)
-        with open(self.token_file_name, "w") as file:
-            json.dump(token, file)
+        async with aiofiles.open(self.token_file_name, "w") as file:
+            await file.write(json.dumps(token))
 
     async def authorize(self):
         await self._get_message_from_server()
         try:
-            token_hash = self._get_token_hash_from_file()
+            token_hash = await self._get_token_hash_from_file()
             await self._send_message_to_server(token_hash)
             answer = await self._get_message_from_server()
             is_user_exist = self._parse_token_from_server(answer)
@@ -121,6 +118,7 @@ class ChatHandler:
                 await file.write(message + "\n")
 
     async def read_msgs(self):
+        await self._load_messages_from_history()
         while message := await self.reader_r.read(1024):
             current_time = datetime.now().strftime("%d.%m.%y %H:%M")
             message = f"[{current_time}] {message.decode().strip()}"
